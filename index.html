@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#2563eb" />
+  <title>FindItGo - איתור וסימון קוד פריט במדף</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+  <!-- Tesseract.js for OCR scanning -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span>📦</span>
+      <span>FindItGo – מאתר פריטים במדף (מחשב ואנדרואיד)</span>
+    </div>
+    <div style="display:flex; gap:10px; align-items:center;">
+      <span id="statsBadge" class="stats-badge">0 תמונות | 0 קודים</span>
+      <button id="installBtn" class="btn btn-outline" style="display:none; padding:6px 12px; font-size:0.85rem;">📲 התקן אפליקציה</button>
+    </div>
+  </header>
+
+  <div class="container">
+    <!-- חיפוש קוד פריט -->
+    <section class="search-panel">
+      <h2>🔍 איתור קוד פריט במדפים</h2>
+      <p style="color:var(--muted); font-size:0.9rem; margin-top:4px;">
+        הקלד מספר או קוד פריט – האפליקציה תמצא את התמונות הרלוונטיות ותסמן בצבע בולט את המיקום המדויק של הפריט במדף.
+      </p>
+      <div class="search-box">
+        <input type="text" id="searchInput" class="search-input" placeholder="הקלד קוד פריט לחיפוש (למשל: 1045, A-20, 7290...)" />
+        <button id="clearSearchBtn" class="btn btn-outline">נקה חיפוש</button>
+      </div>
+      <div id="searchSummary" style="margin-top:10px; font-weight:600; color:var(--accent);"></div>
+    </section>
+
+    <!-- כפתורי צילום, העלאה וסריקה -->
+    <section class="actions-grid">
+      <!-- צילום ישיר מהמצלמה בטלפון או במחשב -->
+      <button id="openCameraBtn" class="btn btn-primary">📸 צלם תמונת מדף (מצלמה)</button>
+      <input type="file" id="mobileCameraInput" accept="image/*" capture="environment" style="display:none" />
+
+      <!-- העלאת תמונות קיימות מהאחסון הפנימי -->
+      <button id="uploadFilesBtn" class="btn btn-accent">📂 העלה תמונות מהאחסון הפנימי</button>
+      <input type="file" id="fileInput" accept="image/*" multiple style="display:none" />
+
+      <!-- ייבוא תמונות מחשבון Google Drive -->
+      <button id="driveBtn" class="btn btn-drive">☁️ ייבוא תמונות מ-Google Drive</button>
+
+      <!-- סריקת כל התמונות וזיהוי קודי פריט -->
+      <button id="scanAllBtn" class="btn btn-warning">⚡ סרוק והמר את כל התמונות</button>
+
+      <!-- גיבוי / ייצוא וייבוא בין מחשב לטלפון -->
+      <button id="exportBtn" class="btn btn-outline">💾 ייצא/ייבא מאגר (סנכרון)</button>
+      <input type="file" id="importInput" accept=".json" style="display:none" />
+    </section>
+
+    <!-- פס התקדמות סריקה -->
+    <div id="progressWrap" class="progress-bar-wrap">
+      <div style="display:flex; justify-content:space-between; font-size:0.9rem;">
+        <span id="progressText">סורק תמונות...</span>
+        <span id="progressPercent">0%</span>
+      </div>
+      <div class="progress-track">
+        <div id="progressFill" class="progress-fill"></div>
+      </div>
+    </div>
+
+    <!-- תצוגת רשימת תמונות + תצוגת מדף מסומנת -->
+    <div class="main-layout">
+      <!-- רשימת תמונות במאגר -->
+      <div class="gallery-card">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h3>🖼️ תמונות מדפים שמורות</h3>
+          <button id="deleteAllBtn" class="btn btn-danger" style="padding:4px 10px; font-size:0.8rem;">מחק הכל</button>
+        </div>
+        <div id="photoList" class="photo-list"></div>
+      </div>
+
+      <!-- תצוגת התמונה וסימון קוד הפריט -->
+      <div class="viewer-card">
+        <div class="viewer-toolbar">
+          <div>
+            <h3 id="viewerTitle">בחר או צלם תמונת מדף</h3>
+            <span id="viewerStatus" style="font-size:0.85rem; color:var(--muted);"></span>
+          </div>
+          <div id="viewerControls" style="display:none; gap:8px; align-items:center; flex-wrap:wrap;">
+            <input type="text" id="shelfNameInput" class="shelf-input" placeholder="שם/מספר מדף (למשל מדף ג-2)" />
+            <button id="rescanSingleBtn" class="btn btn-outline" style="padding:8px 12px; font-size:0.85rem;">🔄 סרוק תמונה זו</button>
+            <button id="deletePhotoBtn" class="btn btn-danger" style="padding:8px 12px; font-size:0.85rem;">🗑️ מחק</button>
+          </div>
+        </div>
+
+        <div class="canvas-wrapper">
+          <canvas id="shelfCanvas"></canvas>
+        </div>
+
+        <div class="hint-banner">
+          💡 <strong>טיפ:</strong> כל הקודים שזוהו מסומנים על התמונה. ניתן גם <strong>ללחוץ על כל נקודה בתמונה</strong> כדי להוסיף או לערוך קוד פריט ידנית במיקום המדויק על המדף!
+        </div>
+
+        <div style="margin-top:12px;">
+          <h4>🏷️ קודי פריט שזוהו בתמונה זו (לחץ על קוד להתמקדות):</h4>
+          <div id="detectedCodesList" class="detected-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- חלון מצלמה חיה למחשב/אנדרואיד -->
+  <div id="cameraModal" class="modal">
+    <div class="modal-content">
+      <h3>📸 צילום מדף</h3>
+      <video id="cameraVideo" autoplay playsinline></video>
+      <div style="display:flex; gap:10px; justify-content:center;">
+        <button id="captureSnapBtn" class="btn btn-accent">צלם ושמור באחסון</button>
+        <button id="closeCameraBtn" class="btn btn-outline">סגור</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- חלון Google Drive: הגדרה חד-פעמית, התחברות, ובחירת תמונות -->
+  <div id="driveModal" class="modal">
+    <div class="modal-content drive-content">
+      <div class="drive-head">
+        <h3>☁️ ייבוא תמונות מ-Google Drive</h3>
+        <button id="driveCloseBtn" class="btn btn-outline btn-sm">סגור</button>
+      </div>
+
+      <div id="driveSetup" hidden>
+        <p class="drive-note">חיבור חד-פעמי: צור "Client ID" חינמי ב-Google Cloud (ההוראות המלאות בקובץ README.md) והוסף בו את שתי הכתובות הבאות:</p>
+        <label class="drive-label" for="driveOrigin">שדה Authorized JavaScript origins:</label>
+        <div class="drive-row">
+          <input id="driveOrigin" class="shelf-input" readonly dir="ltr" />
+          <button class="btn btn-outline btn-sm" data-copy="driveOrigin">העתק</button>
+        </div>
+        <label class="drive-label" for="driveRedirectUri">שדה Authorized redirect URIs:</label>
+        <div class="drive-row">
+          <input id="driveRedirectUri" class="shelf-input" readonly dir="ltr" />
+          <button class="btn btn-outline btn-sm" data-copy="driveRedirectUri">העתק</button>
+        </div>
+        <label class="drive-label" for="driveClientIdInput">הדבק כאן את ה-Client ID:</label>
+        <input id="driveClientIdInput" class="shelf-input" dir="ltr" placeholder="1234-abcd.apps.googleusercontent.com" autocomplete="off" />
+        <button id="driveSaveIdBtn" class="btn btn-primary">שמור והמשך</button>
+      </div>
+
+      <div id="driveLogin" hidden>
+        <p class="drive-note">התחבר לחשבון Google כדי לבחור תמונות מדפים מה-Drive. האפליקציה מבקשת הרשאת <strong>קריאה בלבד</strong>, והתמונות נשמרות רק במכשיר שלך.</p>
+        <button id="driveLoginBtn" class="btn btn-primary">🔐 התחבר לחשבון Google</button>
+        <button id="driveEditIdBtn" class="btn btn-outline btn-sm">שנה Client ID</button>
+      </div>
+
+      <div id="driveBrowser" hidden>
+        <div id="driveCrumbs" class="drive-crumbs"></div>
+        <div id="driveGrid" class="drive-grid"></div>
+        <div class="drive-actions">
+          <button id="driveImportBtn" class="btn btn-accent">⬇️ ייבא וסרוק נבחרות (0)</button>
+          <button id="driveSelectAllBtn" class="btn btn-outline btn-sm">בחר הכל</button>
+          <button id="driveMoreBtn" class="btn btn-outline btn-sm" hidden>טען עוד</button>
+          <button id="driveLogoutBtn" class="btn btn-outline btn-sm">התנתק</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
